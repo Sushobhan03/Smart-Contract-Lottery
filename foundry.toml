@@ -2,6 +2,7 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+ff1=true
 
 optimizer = true
 optimizer_runs = 200
