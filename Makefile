@@ -38,3 +38,9 @@ addConsumer:
 
 fundSubscription:
 	@forge script script/Interactions.s.sol:FundSubscription $(NETWORK_ARGS)
+
+registerUpkeep:
+	@forge script script/Interactions.s.sol:RegisterUpkeep $(NETWORK_ARGS)
+
+enterLottery:
+	@forge script script/Interactions.s.sol:EnterLottery $(NETWORK_ARGS)

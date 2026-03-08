@@ -1,6 +1,6 @@
 //SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.16;
 
 import {VRFCoordinatorV2Interface} from "@chainlink/contracts/src/v0.8/vrf/interfaces/VRFCoordinatorV2Interface.sol";
 //import {VRFCoordinatorV2Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
@@ -16,22 +16,24 @@ import {VRFConsumerBaseV2} from "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBa
  * @dev Implements Chainlink VRFv2
  */
 contract Lottery is VRFConsumerBaseV2 {
-    /**Errors */
+    /**
+     * Errors
+     */
     error Lottery__NotEnoughETHSent();
     error Lottery__TransferFailed();
     error Lottery__LotteryNotOpen();
-    error Lottery__UpkeepNotNeeded(
-        uint256 lotteryState,
-        uint256 balance,
-        uint256 NumberOfPLayers
-    );
+    error Lottery__UpkeepNotNeeded(uint256 lotteryState, uint256 balance, uint256 NumberOfPLayers);
 
-    /**Type Declarations */
+    /**
+     * Type Declarations
+     */
     enum LotteryState {
         OPEN,
         CALCULATING
     }
-    /**State Variables */
+    /**
+     * State Variables
+     */
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint32 private constant NUM_WORDS = 1;
     /**
@@ -51,11 +53,20 @@ contract Lottery is VRFConsumerBaseV2 {
     address private s_recentWinner;
     LotteryState private s_lotteryState;
 
-    /**Events */
+    /**
+     * Events
+     */
     event EnteredLottery(address indexed player);
     event PickedWinner(address indexed winner);
     event RequestedLotteryWinner(uint256 indexed requestId);
 
+    /// @notice Initializes a number of variables required for the Chainlink VRF to function
+    /// @param entranceFee The minimum fee required to enter the lottery by a participant
+    /// @param interval The duration of a single lottery draw
+    /// @param vrfCoordinatorAddress The address of the Chainlink VRF Coordinator
+    /// @param gasLane Sets the max gas price limit
+    /// @param subscriptionId ID of the Chainlink Subscription
+    /// @param callBackGasLimit Sets the max gas limit for FullfillRandomWords
     constructor(
         uint256 entranceFee,
         uint256 interval,
@@ -74,6 +85,7 @@ contract Lottery is VRFConsumerBaseV2 {
         s_lotteryState = LotteryState.OPEN;
     }
 
+    /// @notice Participants enter the lottery
     function enterLottery() external payable {
         if (msg.value < i_entranceFee) {
             revert Lottery__NotEnoughETHSent();
@@ -89,54 +101,61 @@ contract Lottery is VRFConsumerBaseV2 {
     /**
      * @dev This function gets called by the Chainlink Automation nodes to see if it's time to perform an upkeep.
      * The following needs to be true for this funtion to return true:
-     * 1. The timee interval has passed between lottery runs
+     * 1. The time interval has passed between lottery runs
      * 2. The lottery is in an OPEN state
      * 3. The contract has ETH (i.e. participants)
-     * 4. (Implicit) The subscription has been funded with ETH 
-     * 
-
+     * 4. (Implicit) The subscription has been funded with ETH
+     *
+     *
      */
+    /// @return upkeepNeeded Indicates if enough time has passed for the performUpkeep function to be called
     function checkUpkeep(
         bytes memory /* checkData */
-    ) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
+    )
+        public
+        view
+        returns (
+            bool upkeepNeeded,
+            bytes memory /* performData */
+        )
+    {
         bool timeHasPassed = (block.timestamp - s_lastTimeStamp) >= i_interval;
         bool lotteryIsOpen = s_lotteryState == LotteryState.OPEN;
         bool hasBalance = address(this).balance > 0;
         bool hasPlayers = s_players.length > 0;
 
-        upkeepNeeded = (timeHasPassed &&
-            lotteryIsOpen &&
-            hasBalance &&
-            hasPlayers);
+        upkeepNeeded = (timeHasPassed && lotteryIsOpen && hasBalance && hasPlayers);
 
         return (upkeepNeeded, "0x0");
     }
 
-    function performUpkeep(bytes calldata /* performData */) external {
-        (bool upkeepNeeded, ) = checkUpkeep("");
+    /// @notice Sends the request to the Chainlink VRF Coordinator to fetch the given number of Random numbers
+    function performUpkeep(
+        bytes calldata /* performData */
+    )
+        external
+    {
+        (bool upkeepNeeded,) = checkUpkeep("");
         if (!upkeepNeeded) {
-            revert Lottery__UpkeepNotNeeded(
-                uint256(s_lotteryState),
-                address(this).balance,
-                s_players.length
-            );
+            revert Lottery__UpkeepNotNeeded(uint256(s_lotteryState), address(this).balance, s_players.length);
         }
         s_lotteryState = LotteryState.CALCULATING;
 
         uint256 requestId = i_vrfCoordinator.requestRandomWords(
-            i_gasLane,
-            i_subscriptionId,
-            REQUEST_CONFIRMATIONS,
-            i_callBackGasLimit,
-            NUM_WORDS
+            i_gasLane, i_subscriptionId, REQUEST_CONFIRMATIONS, i_callBackGasLimit, NUM_WORDS
         );
         emit RequestedLotteryWinner(requestId);
     }
 
+    /// @notice Picks the Winner after receiving the Random Numbers from the Chainlink node
     function fulfillRandomWords(
-        uint256 /* requestId */,
+        uint256,
+        /* requestId */
         uint256[] memory randomWords
-    ) internal override {
+    )
+        internal
+        override
+    {
         //Checks
         //Effects
 
@@ -148,7 +167,7 @@ contract Lottery is VRFConsumerBaseV2 {
         s_lastTimeStamp = block.timestamp;
         emit PickedWinner(winner);
         // Interactions
-        (bool isSuccess, ) = winner.call{value: address(this).balance}("");
+        (bool isSuccess,) = winner.call{value: address(this).balance}("");
         if (!isSuccess) {
             revert Lottery__TransferFailed();
         }
@@ -180,11 +199,7 @@ contract Lottery is VRFConsumerBaseV2 {
         return s_players.length;
     }
 
-    function getVrfCoordinator()
-        external
-        view
-        returns (VRFCoordinatorV2Interface)
-    {
+    function getVrfCoordinator() external view returns (VRFCoordinatorV2Interface) {
         return i_vrfCoordinator;
     }
 
